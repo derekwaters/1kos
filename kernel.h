@@ -2,6 +2,10 @@
 
 #include "common.h"
 
+#define PROCS_MAX		8	// Maximum number of processes
+#define PROC_UNUSED		0	// Unused process control structure
+#define PROC_RUNNABLE	1	// Runnable process
+
 struct sbiret {
 	long error;
 	long value;
@@ -40,6 +44,13 @@ struct trap_frame {
 	uint32_t	s11;
 	uint32_t	sp;
 } __attribute__((packed));
+
+struct process {
+	int	pid;				// Process id
+	int state;				// Process state (PROC_UNUSED or PROC_RUNNABLE)
+	vaddr_t sp;				// Stack pointer
+	uint8_t stack[8192];	// Kernel stack
+};
 
 #define READ_CSR(reg)														  \
 	({																		  \
