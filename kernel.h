@@ -6,6 +6,14 @@
 #define PROC_UNUSED		0	// Unused process control structure
 #define PROC_RUNNABLE	1	// Runnable process
 
+// Page Mapping Definitions
+#define SATP_SV32 	(1u << 31)
+#define PAGE_V		(1 << 0)	// "Valid" bit (entry is enabled)
+#define PAGE_R		(1 << 1)	// "Readable" bit
+#define PAGE_W		(1 << 2)	// "Writable" bit
+#define PAGE_X		(1 << 3)	// "Executable" bit
+#define	PAGE_U		(1 << 4)	// "User space accessible" bit
+
 struct sbiret {
 	long error;
 	long value;
@@ -46,10 +54,11 @@ struct trap_frame {
 } __attribute__((packed));
 
 struct process {
-	int	pid;				// Process id
-	int state;				// Process state (PROC_UNUSED or PROC_RUNNABLE)
-	vaddr_t sp;				// Stack pointer
-	uint8_t stack[8192];	// Kernel stack
+	int	pid;					// Process id
+	int state;					// Process state (PROC_UNUSED or PROC_RUNNABLE)
+	vaddr_t sp;					// Stack pointer
+	uint32_t	*page_table;	// Top level page table
+	uint8_t stack[8192];		// Kernel stack
 };
 
 #define READ_CSR(reg)														  \

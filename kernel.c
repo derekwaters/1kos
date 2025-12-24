@@ -3,6 +3,7 @@
 
 extern char __bss[], __bss_end[], __stack_top[];
 extern char __free_ram[], __free_ram_end[];
+extern char __kernel_base[];
 
 // Process Storage
 struct process procs[PROCS_MAX];
@@ -32,6 +33,9 @@ void putchar(char ch) {
 	sbi_call(ch, 0, 0, 0, 0, 0, 0, 1 /* Console Putchar */);
 }
 
+/*****************************************************************************
+ * MEMORY HANDLING                                                           *
+ *****************************************************************************/
 paddr_t alloc_pages(uint32_t n) {
 	static paddr_t next_paddr = (paddr_t) __free_ram;
 	paddr_t paddr = next_paddr;
@@ -44,12 +48,38 @@ paddr_t alloc_pages(uint32_t n) {
 	return paddr;
 }
 
+
+void map_page(uint32_t *table1, uint32_t vaddr, paddr_t paddr, uint32_t flags) {
+	if (!is_aligned(vaddr, PAGE_SIZE))
+		PANIC("unaligned vaddr %x", vaddr);
+
+	if (!is_aligned(paddr, PAGE_SIZE))
+		PANIC("unaligned paddr %x", paddr);
+
+	// Get the top ten bits for the top-level page index
+	uint32_t vpn1 = (vaddr >> 22) & 0x3ff;
+	if ((table1[vpn1] & PAGE_V) == 0) {
+		// Create the first level page table if it doesn't exist
+		uint32_t pt_paddr = alloc_pages(1);
+		table1[vpn1] = ((pt_paddr / PAGE_SIZE) << 10) | PAGE_V;
+	}
+
+	// Get the second level page table entry to map the physical page
+	// from the second ten bits of the vaddr
+	uint32_t vpn0 = (vaddr >> 12) & 0x3ff;
+	uint32_t *table0 = (uint32_t *) ((table1[vpn1] >> 10) * PAGE_SIZE);
+	table0[vpn0] = ((paddr / PAGE_SIZE) << 10) | flags | PAGE_V;
+}
+
+/*****************************************************************************
+ * EXCEPTION HANDLING                                                        *
+ *****************************************************************************/
 __attribute__((naked))
 __attribute__((aligned(4)))
 void kernel_entry(void) {
 	__asm__ __volatile__(
 		// Retrieve the kernel stack of the running process from sscratch
-		"csrrw sscratch, sp\n"
+		"csrrw sp, sscratch, sp\n"
 
 		"addi sp, sp, -4 * 31\n"
 		"sw ra,  4 * 0(sp)\n"
@@ -137,6 +167,9 @@ void handle_trap(struct trap_frame *f) {
 	PANIC("unexpected trap scause=%x, stval=%x, sepc=%x\n", scause, stval, user_pc);
 }
 
+/*****************************************************************************
+ * PROCESS AND CONTEXT HANDLING                                              *
+ *****************************************************************************/
 __attribute__((naked)) void switch_context(uint32_t *prev_sp,
 											uint32_t *next_sp) {
 	__asm__ __volatile__(
@@ -210,10 +243,17 @@ struct process *create_process(uint32_t pc) {
 	*--sp = 0;				// s0
 	*--sp = (uint32_t)pc;	// ra
 
+	// Map kernel memory pages
+	uint32_t *page_table = (uint32_t *) alloc_pages(1);
+	for (paddr_t paddr = (paddr_t) __kernel_base;
+		paddr < (paddr_t) __free_ram_end; paddr += PAGE_SIZE)
+		map_page(page_table, paddr, paddr, PAGE_R | PAGE_W | PAGE_X);
+
 	// Initialize fields
 	proc->pid = i + 1;
 	proc->state = PROC_RUNNABLE;
 	proc->sp = (uint32_t) sp;
+	proc->page_table = page_table;
 	return proc;
 }
 
@@ -234,9 +274,13 @@ void yield(void) {
 
 	// Store the bottom of the kernel stack for use in exception handling
 	__asm__ __volatile__(
+		"sfence.vma\n"
+		"csrw satp, %[satp]\n"
+		"sfence.vma\n"
 		"csrw sscratch, %[sscratch]\n"
 		:
-		: [sscratch] "r" ((uint32_t) &next->stack[sizeof(next->stack)])
+		: [satp] "r" (SATP_SV32 | ((uint32_t) next->page_table / PAGE_SIZE)),
+		  [sscratch] "r" ((uint32_t) &next->stack[sizeof(next->stack)])
 	);
 
 	// Otherwise, switch to the new process
@@ -273,6 +317,9 @@ void proc_b_entry(void) {
 	}
 }
 
+/*****************************************************************************
+ * KERNEL ENTRY POINTS                                                       *
+ *****************************************************************************/
 void kernel_main(void) {
 	memset(__bss, 0, (size_t) __bss_end - (size_t) __bss);
 
