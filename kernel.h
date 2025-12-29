@@ -20,6 +20,9 @@
 // CPU Mode Definitions
 #define SSTATUS_SPIE (1 << 5)	// RISC-V U-Mode
 
+// Exception Causes
+#define	SCAUSE_ECALL	8		// Userspace makes a system call
+
 struct sbiret {
 	long error;
 	long value;

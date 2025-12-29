@@ -36,6 +36,17 @@ void putchar(char ch) {
 	sbi_call(ch, 0, 0, 0, 0, 0, 0, 1 /* Console Putchar */);
 }
 
+void handle_syscall(struct trap_frame *f) {
+	// NOTE: The return value of the call should be put into f->a0?
+	switch (f->a3) {
+		case SYS_PUTCHAR:
+			putchar(f->a0);
+			break;
+		default:
+			PANIC("unexpected syscall a3=%x\n", f->a3);
+	}
+}
+
 /*****************************************************************************
  * MEMORY HANDLING                                                           *
  *****************************************************************************/
@@ -167,7 +178,16 @@ void handle_trap(struct trap_frame *f) {
 	uint32_t stval = READ_CSR(stval);
 	uint32_t user_pc = READ_CSR(sepc);
 
-	PANIC("unexpected trap scause=%x, stval=%x, sepc=%x\n", scause, stval, user_pc);
+	if (scause == SCAUSE_ECALL) {
+		// ECALL exception thrown to make a system call from user space
+		handle_syscall(f);
+		user_pc += 4;		// Move the pc on otherwise the ecall instruction
+							// Will be called again continuously
+	} else {
+		PANIC("unexpected trap scause=%x, stval=%x, sepc=%x\n", scause, stval, user_pc);
+	}
+
+	WRITE_CSR(sepc, user_pc);
 }
 
 /*****************************************************************************
