@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "common.h"
 #include "virtio.h"
+#include "tarfs.h"
 
 extern char __bss[], __bss_end[], __stack_top[];
 extern char __free_ram[], __free_ram_end[];
@@ -47,6 +48,34 @@ void exit(int exitcode) {
 	printf("process %d exited with code %d\n", current_proc->pid, current_proc->exitcode);
 	current_proc->state = PROC_EXITED;
 }
+
+int readfile(const char *filename, char *buf, int len) {
+	struct file *file = fs_lookup(filename);
+	if (!file) {
+		printf("file not found: %s\n", filename);
+		return -1;
+	}
+	if (len > (int) sizeof(file->data))
+		len = file->size;
+	memcpy(buf, file->data, len);
+	return len;
+}
+
+int writefile(const char *filename, const char *buf, int len) {
+	struct file *file = fs_lookup(filename);
+	if (!file) {
+		printf("file not found: %s\n", filename);
+		return -1;
+	}
+	if (len > (int) sizeof(file->data))
+		len = file->size;
+	memcpy(file->data, buf, len);
+	file->size = len;
+	fs_flush();
+	return len;
+}
+
+
 
 /*****************************************************************************
  * MEMORY HANDLING                                                           *
@@ -139,7 +168,7 @@ __attribute__((naked)) void user_entry(void) {
 		"sret							\n"
 		:
 		: [sepc] "r" (USER_BASE),
-		  [sstatus] "r" (SSTATUS_SPIE)
+		  [sstatus] "r" (SSTATUS_SPIE | SSTATUS_SUM)
 	);
 }
 
@@ -270,6 +299,24 @@ void handle_syscall(struct trap_frame *f) {
 			yield();
 			PANIC("unreachable code?");
 			break;
+		case SYS_READFILE:
+			{
+				const char *filename = (const char *) f->a0;
+				char *buf = (char *) f->a1;
+				int len = f->a2;
+				int ret = readfile(filename, buf, len);
+				f->a0 = ret;
+			}
+			break;
+		case SYS_WRITEFILE:
+			{
+				const char *filename = (const char *) f->a0;
+				char *buf = (char *) f->a1;
+				int len = f->a2;
+				int ret = writefile(filename, buf, len);
+				f->a0 = ret;
+			}
+			break;
 		default:
 			PANIC("unexpected syscall a3=%x\n", f->a3);
 	}
@@ -391,6 +438,9 @@ void kernel_main(void) {
 
 	// Initialise the virtio driver
 	virtio_blk_init();
+
+	// Initialise the file system
+	fs_init();
 
 	// DEBUG ONLY -> Let's test the driver
 	char buf[SECTOR_SIZE];

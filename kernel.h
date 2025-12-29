@@ -19,7 +19,8 @@
 #define	USER_BASE	0x1000000	// NOTE: must match the start address in the userspace linker file user.ld
 
 // CPU Mode Definitions
-#define SSTATUS_SPIE (1 << 5)	// RISC-V U-Mode
+#define SSTATUS_SPIE 	(1 << 5)	// RISC-V U-Mode
+#define	SSTATUS_SUM		(1 << 18)	// RISC-V Supervisor User Memory Access mode
 
 // Exception Causes
 #define	SCAUSE_ECALL	8		// Userspace makes a system call
