@@ -5,6 +5,7 @@
 #define PROCS_MAX		8	// Maximum number of processes
 #define PROC_UNUSED		0	// Unused process control structure
 #define PROC_RUNNABLE	1	// Runnable process
+#define PROC_EXITED		2	// Exited process
 
 // Page Mapping Definitions
 #define SATP_SV32 	(1u << 31)
@@ -64,7 +65,8 @@ struct trap_frame {
 
 struct process {
 	int	pid;					// Process id
-	int state;					// Process state (PROC_UNUSED or PROC_RUNNABLE)
+	int state;					// Process state (PROC_UNUSED, PROC_RUNNABLE, PROC_EXITED)
+	int exitcode;				// Result of process in PROC_EXITED state
 	vaddr_t sp;					// Stack pointer
 	uint32_t	*page_table;	// Top level page table
 	uint8_t stack[8192];		// Kernel stack
