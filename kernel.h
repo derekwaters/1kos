@@ -14,6 +14,12 @@
 #define PAGE_X		(1 << 3)	// "Executable" bit
 #define	PAGE_U		(1 << 4)	// "User space accessible" bit
 
+// User Space Definitions
+#define	USER_BASE	0x1000000	// NOTE: must match the start address in the userspace linker file user.ld
+
+// CPU Mode Definitions
+#define SSTATUS_SPIE (1 << 5)	// RISC-V U-Mode
+
 struct sbiret {
 	long error;
 	long value;
