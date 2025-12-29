@@ -1,5 +1,6 @@
 #include "kernel.h"
 #include "common.h"
+#include "virtio.h"
 
 extern char __bss[], __bss_end[], __stack_top[];
 extern char __free_ram[], __free_ram_end[];
@@ -178,6 +179,9 @@ struct process *create_process(const void *image, size_t image_size) {
 	for (paddr_t paddr = (paddr_t) __kernel_base;
 		paddr < (paddr_t) __free_ram_end; paddr += PAGE_SIZE)
 		map_page(page_table, paddr, paddr, PAGE_R | PAGE_W | PAGE_X);
+
+	// Map virtio MMIO registers
+	map_page(page_table, VIRTIO_BLK_PADDR, VIRTIO_BLK_PADDR, PAGE_R | PAGE_W);
 
 	// Map user space pages
 	for (uint32_t off = 0; off < image_size; off += PAGE_SIZE) {
@@ -384,6 +388,19 @@ void kernel_main(void) {
 
 	WRITE_CSR(stvec, (uint32_t) kernel_entry);	// new
 	// __asm__ __volatile__("unimp");	// new
+
+	// Initialise the virtio driver
+	virtio_blk_init();
+
+	// DEBUG ONLY -> Let's test the driver
+	char buf[SECTOR_SIZE];
+	read_write_disk(buf, 0, false);
+	printf("first sector: %s\n", buf);
+
+	strcpy(buf, "hello from kernel!!!\n");
+	read_write_disk(buf, 0, true);
+	// END DEBUG ONLY
+
 
 	idle_proc = create_process(NULL, 0);
 	idle_proc->pid = 0;	// Special idle process id
